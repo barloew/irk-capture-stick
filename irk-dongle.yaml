@@ -1,0 +1,194 @@
+# ============================================================
+#  IRK Capture op LilyGo T-Dongle-S3  (met display)
+# ============================================================
+
+substitutions:
+  device_name: irk-dongle
+  friendly_name: IRK Dongle
+  api_key: !secret api_key        # uit stap 1
+  ota_password: !secret ota_password    # uit stap 1
+  esp32_variant: esp32s3
+  esp32_board: esp32-s3-devkitc-1
+  ble_name: "IRK Capture"              # <<< je eigen Bluetooth-advertentienaam
+
+packages:
+  device:
+    url: https://github.com/DerekSeaman/irk-capture
+    ref: main
+    file: ESPHome Devices/irk-capture-base.yaml
+    refresh: always
+
+# Wifi met jouw secrets (overschrijft die uit het package)
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+## ---------- Display + RGB-LED: LilyGo T-Dongle-S3 ----------
+# Twee aparte SPI-bussen: één voor het LCD, één voor de APA102-LED.
+spi:
+  - id: spi_lcd
+    clk_pin: GPIO5
+    mosi_pin: GPIO3
+  - id: spi_led
+    clk_pin: GPIO39
+    mosi_pin: GPIO40
+
+# Achtergrondverlichting van het LCD (PWM op GPIO38, inverted)
+output:
+  - platform: ledc
+    pin: GPIO38
+    inverted: true
+    id: backlight_output
+
+light:
+  - platform: monochromatic
+    output: backlight_output
+    name: "LCD Backlight"
+    id: lcd_backlight
+    restore_mode: ALWAYS_ON        # scherm gaat vanzelf aan bij boot
+
+  # De ingebouwde APA102 RGB-LED (1 stuks)
+  - platform: spi_led_strip
+    id: rgb_led
+    spi_id: spi_led
+    num_leds: 1
+    name: "RGB LED"
+    restore_mode: ALWAYS_OFF
+    # spi_led_strip heeft geen rgb_order-optie: het gaat er zelf van uit dat
+    # de LED BGR is (precies wat de APA102 op deze dongle gebruikt).
+
+# Dongle-knop (GPIO0) -> blader door de schermen
+binary_sensor:
+  - platform: gpio
+    pin:
+      number: GPIO0
+      inverted: true
+    name: "Dongle Button"
+    on_press:
+      then:
+        - display.page.show_next: my_display
+        - component.update: my_display
+
+font:
+  - file: "gfonts://Roboto"
+    id: font_med
+    size: 14
+  - file: "gfonts://Roboto"
+    id: font_small
+    size: 11
+
+# Interne wifi-info voor het systeemscherm (internal = geen losse entiteit in HA)
+text_sensor:
+  - platform: wifi_info
+    ip_address:
+      id: wifi_ip
+      internal: true
+    ssid:
+      id: wifi_ssid_ts
+      internal: true
+
+display:
+  - platform: st7735
+    id: my_display
+    spi_id: spi_lcd
+    model: "INITR_MINI160X80"
+    reset_pin: GPIO1
+    cs_pin: GPIO4
+    dc_pin: GPIO2
+    rotation: 270
+    device_width: 82
+    device_height: 161
+    col_start: 0
+    row_start: 0
+    eight_bit_color: true
+    invert_colors: true
+    use_bgr: true
+    update_interval: 1s
+    pages:
+      # --- Scherm 1: statusoverzicht ---
+      - id: page_status
+        lambda: |-
+          it.fill(Color(0, 0, 0));
+          it.print(2, 0, id(font_med), Color(255, 255, 255), "IRK Capture");
+          auto adv = id(ble_advertising).state;
+          it.printf(2, 18, id(font_small),
+                    adv ? Color(0, 255, 0) : Color(255, 0, 0),
+                    "Adv: %s", adv ? "AAN" : "uit");
+          it.printf(2, 32, id(font_small), Color(255, 255, 255),
+                    "Naam: %s", id(ble_name_input).state.c_str());
+          it.printf(2, 46, id(font_small), Color(255, 255, 255),
+                    "MAC: %s", id(effective_mac).state.c_str());
+          std::string irk = id(last_irk).state;
+          if (irk.length() >= 12)
+            it.printf(2, 60, id(font_small), Color(0, 200, 255),
+                      "IRK: %s...", irk.substr(0, 12).c_str());
+          else
+            it.print(2, 60, id(font_small), Color(255, 255, 255), "IRK: (nog geen)");
+
+      # --- Scherm 2: volledige IRK ---
+      - id: page_irk
+        lambda: |-
+          it.fill(Color(0, 0, 0));
+          it.print(2, 0, id(font_med), Color(255, 255, 255), "Laatste IRK");
+          std::string irk = id(last_irk).state;
+          if (irk.length() >= 32) {
+            it.printf(2, 20, id(font_small), Color(0, 200, 255),
+                      "%s", irk.substr(0, 16).c_str());
+            it.printf(2, 34, id(font_small), Color(0, 200, 255),
+                      "%s", irk.substr(16, 16).c_str());
+          } else if (!irk.empty()) {
+            it.printf(2, 20, id(font_small), Color(0, 200, 255),
+                      "%s", irk.c_str());
+          } else {
+            it.print(2, 20, id(font_small), Color(255, 255, 255), "(nog geen IRK)");
+          }
+          it.printf(2, 54, id(font_small), Color(255, 255, 255),
+                    "Van: %s", id(last_addr).state.c_str());
+
+      # --- Scherm 3: systeem / wifi ---
+      - id: page_sys
+        lambda: |-
+          it.fill(Color(0, 0, 0));
+          it.print(2, 0, id(font_med), Color(255, 255, 255), "Systeem");
+          it.printf(2, 20, id(font_small), Color(255, 255, 255),
+                    "SSID: %s", id(wifi_ssid_ts).state.c_str());
+          it.printf(2, 34, id(font_small), Color(255, 255, 255),
+                    "IP: %s", id(wifi_ip).state.c_str());
+          it.printf(2, 48, id(font_small), Color(255, 255, 255),
+                    "Profiel: %s", id(ble_profile_select).current_option().c_str());
+
+# ---------- (Optioneel) RGB-LED als statuslampje ----------
+# Groen = IRK gevangen | Blauw = aan het uitzenden | Rood = uit.
+# Wil je de LED liever helemaal zelf bedienen vanuit HA? Verwijder dit
+# hele interval-blok, dan blijft "RGB LED" een gewone bestuurbare lamp.
+interval:
+  - interval: 2s
+    then:
+      - if:
+          condition:
+            lambda: 'return id(last_irk).state.length() >= 12;'
+          then:
+            - light.turn_on:
+                id: rgb_led
+                red: 0%
+                green: 100%
+                blue: 0%
+                brightness: 40%
+          else:
+            - if:
+                condition:
+                  lambda: 'return id(ble_advertising).state;'
+                then:
+                  - light.turn_on:
+                      id: rgb_led
+                      red: 0%
+                      green: 0%
+                      blue: 100%
+                      brightness: 40%
+                else:
+                  - light.turn_on:
+                      id: rgb_led
+                      red: 100%
+                      green: 0%
+                      blue: 0%
+                      brightness: 30%
