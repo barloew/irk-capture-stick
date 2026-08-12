@@ -1,15 +1,15 @@
 # ============================================================
-#  IRK Capture op LilyGo T-Dongle-S3  (met display)
+#  IRK Capture on LilyGo T-Dongle-S3  (with display)
 # ============================================================
 
 substitutions:
   device_name: irk-dongle
   friendly_name: IRK Dongle
-  api_key: !secret api_key        # uit stap 1
-  ota_password: !secret ota_password    # uit stap 1
+  api_key: !secret api_key        # from step 1
+  ota_password: !secret ota_password    # from step 1
   esp32_variant: esp32s3
   esp32_board: esp32-s3-devkitc-1
-  ble_name: "IRK Capture"              # <<< je eigen Bluetooth-advertentienaam
+  ble_name: "IRK Capture"              # <<< your own Bluetooth advertising name
 
 packages:
   device:
@@ -18,13 +18,13 @@ packages:
     file: ESPHome Devices/irk-capture-base.yaml
     refresh: always
 
-# Wifi met jouw secrets (overschrijft die uit het package)
+# Wi-Fi using your own secrets (overrides the ones from the package)
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
 
-## ---------- Display + RGB-LED: LilyGo T-Dongle-S3 ----------
-# Twee aparte SPI-bussen: één voor het LCD, één voor de APA102-LED.
+## ---------- Display + RGB LED: LilyGo T-Dongle-S3 ----------
+# Two separate SPI buses: one for the LCD, one for the APA102 LED.
 spi:
   - id: spi_lcd
     clk_pin: GPIO5
@@ -33,7 +33,7 @@ spi:
     clk_pin: GPIO39
     mosi_pin: GPIO40
 
-# Achtergrondverlichting van het LCD (PWM op GPIO38, inverted)
+# LCD backlight (PWM on GPIO38, inverted)
 output:
   - platform: ledc
     pin: GPIO38
@@ -45,19 +45,19 @@ light:
     output: backlight_output
     name: "LCD Backlight"
     id: lcd_backlight
-    restore_mode: ALWAYS_ON        # scherm gaat vanzelf aan bij boot
+    restore_mode: ALWAYS_ON        # screen turns on automatically at boot
 
-  # De ingebouwde APA102 RGB-LED (1 stuks)
+  # The built-in APA102 RGB LED (1 pc)
   - platform: spi_led_strip
     id: rgb_led
     spi_id: spi_led
     num_leds: 1
     name: "RGB LED"
     restore_mode: ALWAYS_OFF
-    # spi_led_strip heeft geen rgb_order-optie: het gaat er zelf van uit dat
-    # de LED BGR is (precies wat de APA102 op deze dongle gebruikt).
+    # spi_led_strip has no rgb_order option: it simply assumes the LED is
+    # BGR (exactly what the APA102 on this dongle uses).
 
-# Dongle-knop (GPIO0) -> blader door de schermen
+# Dongle button (GPIO0) -> cycle through the screens
 binary_sensor:
   - platform: gpio
     pin:
@@ -77,7 +77,7 @@ font:
     id: font_small
     size: 11
 
-# Interne wifi-info voor het systeemscherm (internal = geen losse entiteit in HA)
+# Internal Wi-Fi info for the system screen (internal = no separate entity in HA)
 text_sensor:
   - platform: wifi_info
     ip_address:
@@ -105,7 +105,7 @@ display:
     use_bgr: true
     update_interval: 1s
     pages:
-      # --- Scherm 1: statusoverzicht ---
+      # --- Screen 1: status overview ---
       - id: page_status
         lambda: |-
           it.fill(Color(0, 0, 0));
@@ -113,9 +113,9 @@ display:
           auto adv = id(ble_advertising).state;
           it.printf(2, 18, id(font_small),
                     adv ? Color(0, 255, 0) : Color(255, 0, 0),
-                    "Adv: %s", adv ? "AAN" : "uit");
+                    "Adv: %s", adv ? "ON" : "off");
           it.printf(2, 32, id(font_small), Color(255, 255, 255),
-                    "Naam: %s", id(ble_name_input).state.c_str());
+                    "Name: %s", id(ble_name_input).state.c_str());
           it.printf(2, 46, id(font_small), Color(255, 255, 255),
                     "MAC: %s", id(effective_mac).state.c_str());
           std::string irk = id(last_irk).state;
@@ -123,13 +123,13 @@ display:
             it.printf(2, 60, id(font_small), Color(0, 200, 255),
                       "IRK: %s...", irk.substr(0, 12).c_str());
           else
-            it.print(2, 60, id(font_small), Color(255, 255, 255), "IRK: (nog geen)");
+            it.print(2, 60, id(font_small), Color(255, 255, 255), "IRK: (none yet)");
 
-      # --- Scherm 2: volledige IRK ---
+      # --- Screen 2: full IRK ---
       - id: page_irk
         lambda: |-
           it.fill(Color(0, 0, 0));
-          it.print(2, 0, id(font_med), Color(255, 255, 255), "Laatste IRK");
+          it.print(2, 0, id(font_med), Color(255, 255, 255), "Latest IRK");
           std::string irk = id(last_irk).state;
           if (irk.length() >= 32) {
             it.printf(2, 20, id(font_small), Color(0, 200, 255),
@@ -140,27 +140,27 @@ display:
             it.printf(2, 20, id(font_small), Color(0, 200, 255),
                       "%s", irk.c_str());
           } else {
-            it.print(2, 20, id(font_small), Color(255, 255, 255), "(nog geen IRK)");
+            it.print(2, 20, id(font_small), Color(255, 255, 255), "(no IRK yet)");
           }
           it.printf(2, 54, id(font_small), Color(255, 255, 255),
-                    "Van: %s", id(last_addr).state.c_str());
+                    "From: %s", id(last_addr).state.c_str());
 
-      # --- Scherm 3: systeem / wifi ---
+      # --- Screen 3: system / Wi-Fi ---
       - id: page_sys
         lambda: |-
           it.fill(Color(0, 0, 0));
-          it.print(2, 0, id(font_med), Color(255, 255, 255), "Systeem");
+          it.print(2, 0, id(font_med), Color(255, 255, 255), "System");
           it.printf(2, 20, id(font_small), Color(255, 255, 255),
                     "SSID: %s", id(wifi_ssid_ts).state.c_str());
           it.printf(2, 34, id(font_small), Color(255, 255, 255),
                     "IP: %s", id(wifi_ip).state.c_str());
           it.printf(2, 48, id(font_small), Color(255, 255, 255),
-                    "Profiel: %s", id(ble_profile_select).current_option().c_str());
+                    "Profile: %s", id(ble_profile_select).current_option().c_str());
 
-# ---------- (Optioneel) RGB-LED als statuslampje ----------
-# Groen = IRK gevangen | Blauw = aan het uitzenden | Rood = uit.
-# Wil je de LED liever helemaal zelf bedienen vanuit HA? Verwijder dit
-# hele interval-blok, dan blijft "RGB LED" een gewone bestuurbare lamp.
+# ---------- (Optional) RGB LED as a status indicator ----------
+# Green = IRK captured | Blue = advertising | Red = idle.
+# Would you rather control the LED entirely yourself from HA? Remove this
+# whole interval block and "RGB LED" stays an ordinary controllable light.
 interval:
   - interval: 2s
     then:
