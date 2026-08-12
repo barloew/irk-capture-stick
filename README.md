@@ -1,46 +1,46 @@
-# IRK Capture op LilyGo T-Dongle-S3
+# IRK Capture on LilyGo T-Dongle-S3
 
-ESPHome-configuratie die het [IRK Capture](https://github.com/DerekSeaman/irk-capture)-project van Derek Seaman draait op een **LilyGo T-Dongle-S3**, uitgebreid met ondersteuning voor het ingebouwde LCD-schermpje en de RGB-LED.
+An ESPHome configuration that runs Derek Seaman's [IRK Capture](https://github.com/DerekSeaman/irk-capture) project on a **LilyGo T-Dongle-S3**, extended with support for the built-in LCD screen and RGB LED.
 
-## Wat doet dit?
+## What does this do?
 
-De dongle doet zich voor als een Bluetooth-apparaat (standaard met de advertentienaam `IRK Capture`). Koppel je er met je telefoon mee, dan vangt hij de **IRK** (Identity Resolving Key) op.
+The dongle presents itself as a Bluetooth device (advertising name `IRK Capture` by default). Pair your phone with it and it captures the **IRK** (Identity Resolving Key).
 
-Die sleutel heb je nodig om in Home Assistant een telefoon met roterend MAC-adres toch betrouwbaar te volgen — bijvoorbeeld via de [Private BLE Device](https://www.home-assistant.io/integrations/private_ble_device/)-integratie of Bermuda BLE Trilateratie-achtige aanwezigheidsdetectie.
+You need that key to reliably track a phone with a rotating MAC address in Home Assistant — for example via the [Private BLE Device](https://www.home-assistant.io/integrations/private_ble_device/) integration, or Bermuda BLE trilateration-style presence detection.
 
-Het verschil met de standaardconfiguratie: hier lees je de IRK **direct van het schermpje** af, zonder logs of de HA-webinterface erbij te hoeven pakken.
+The difference from the standard configuration: here you read the IRK **straight off the screen**, without having to dig through logs or the HA web interface.
 
 ## Hardware
 
-- LilyGo T-Dongle-S3 (ESP32-S3, met ST7735 160×80 LCD en APA102 RGB-LED)
-- Verder niets — geen soldeerwerk, geen extra componenten
+- LilyGo T-Dongle-S3 (ESP32-S3, with ST7735 160×80 LCD and APA102 RGB LED)
+- Nothing else — no soldering, no extra components
 
-## Functies
+## Features
 
-| Functie | Toelichting |
+| Feature | Notes |
 |---|---|
-| **Drie schermen** | Blader erdoor met de knop op de dongle (GPIO0) |
-| **Dimbare backlight** | Via PWM als lamp beschikbaar in Home Assistant, standaard aan bij boot |
-| **RGB-LED als statuslampje** | Elke 2 seconden bijgewerkt op basis van de actuele toestand |
-| **Twee losse SPI-bussen** | LCD en LED delen geen pinnen en krijgen daarom elk een eigen bus |
+| **Three screens** | Cycle through them with the button on the dongle (GPIO0) |
+| **Dimmable backlight** | Available as a light in Home Assistant via PWM, on by default at boot |
+| **RGB LED as status indicator** | Updated every 2 seconds based on the current state |
+| **Two separate SPI buses** | The LCD and LED share no pins, so each gets its own bus |
 
-### De schermen
+### The screens
 
-1. **Status** — advertising aan/uit, ingestelde BLE-naam, MAC-adres, en de eerste 12 tekens van de IRK
-2. **Laatste IRK** — de volledige sleutel over twee regels van 16 tekens, plus het adres waar hij van kwam
-3. **Systeem** — SSID, IP-adres en het actieve BLE-profiel
+1. **Status** — advertising on/off, the configured BLE name, MAC address, and the first 12 characters of the IRK
+2. **Latest IRK** — the full key across two lines of 16 characters, plus the address it came from
+3. **System** — SSID, IP address, and the active BLE profile
 
-### LED-kleuren
+### LED colours
 
-| Kleur | Betekenis |
+| Colour | Meaning |
 |---|---|
-| 🟢 Groen | IRK opgevangen |
-| 🔵 Blauw | Aan het uitzenden (advertising) |
-| 🔴 Rood | Inactief |
+| 🟢 Green | IRK captured |
+| 🔵 Blue | Advertising |
+| 🔴 Red | Idle |
 
 ## Pinout
 
-| Functie | Pin |
+| Function | Pin |
 |---|---|
 | LCD — SPI clock | GPIO5 |
 | LCD — SPI MOSI | GPIO3 |
@@ -50,53 +50,53 @@ Het verschil met de standaardconfiguratie: hier lees je de IRK **direct van het 
 | LCD — backlight (PWM, inverted) | GPIO38 |
 | LED — SPI clock | GPIO39 |
 | LED — SPI MOSI | GPIO40 |
-| Knop (inverted) | GPIO0 |
+| Button (inverted) | GPIO0 |
 
-## Installatie
+## Installation
 
-### 1. Vul je `secrets.yaml`
+### 1. Fill in your `secrets.yaml`
 
 ```yaml
-wifi_ssid: "JouwNetwerk"
-wifi_password: "JouwWachtwoord"
+wifi_ssid: "YourNetwork"
+wifi_password: "YourPassword"
 api_key: "..."         # base64-encoded encryption key
 ota_password: "..."
 ```
 
-Een API-key genereer je op [esphome.io/components/api](https://esphome.io/components/api/#configuration-variables) of met `openssl rand -base64 32`.
+You can generate an API key at [esphome.io/components/api](https://esphome.io/components/api/#configuration-variables) or with `openssl rand -base64 32`.
 
-### 2. Pas de BLE-naam aan (optioneel)
+### 2. Change the BLE name (optional)
 
 ```yaml
 substitutions:
-  ble_name: "IRK Capture"    # <<< je eigen advertentienaam
+  ble_name: "IRK Capture"    # <<< your own advertising name
 ```
 
-### 3. Flashen
+### 3. Flashing
 
-Sluit de dongle aan en installeer via de ESPHome-dashboard, of:
+Plug in the dongle and install via the ESPHome dashboard, or:
 
 ```bash
 esphome run irk-dongle.yaml
 ```
 
-### 4. IRK opvangen
+### 4. Capturing an IRK
 
-1. Zorg dat advertising aan staat (scherm 1 toont **Adv: AAN**, LED is blauw)
-2. Ga op je telefoon naar de Bluetooth-instellingen en koppel met het apparaat
-3. De LED wordt groen — druk op de knop tot scherm 2 en lees de IRK af
-4. Vul de sleutel in bij de Private BLE Device-integratie in Home Assistant
+1. Make sure advertising is on (screen 1 shows **Adv: ON**, the LED is blue)
+2. Go to the Bluetooth settings on your phone and pair with the device
+3. The LED turns green — press the button until you reach screen 2 and read off the IRK
+4. Enter the key in the Private BLE Device integration in Home Assistant
 
-## Aanpassen
+## Customising
 
-**LED zelf besturen vanuit HA?** Het `interval`-blok onderaan overschrijft handmatige bediening elke 2 seconden. Verwijder dat hele blok, dan blijft `RGB LED` een gewone bestuurbare lamp.
+**Want to control the LED yourself from HA?** The `interval` block at the bottom overrides manual control every 2 seconds. Remove that whole block and `RGB LED` stays an ordinary controllable light.
 
-**Andere fonts of layout?** De schermen zijn opgebouwd met lambda's in het `display`-blok; coördinaten en kleuren pas je daar direct aan.
+**Different fonts or layout?** The screens are built with lambdas in the `display` block; adjust coordinates and colours directly there.
 
 > [!NOTE]
-> `spi_led_strip` heeft geen `rgb_order`-optie — de component gaat er zelf van uit dat de LED BGR is, wat precies overeenkomt met de APA102 op deze dongle.
+> `spi_led_strip` has no `rgb_order` option — the component simply assumes the LED is BGR, which is exactly what the APA102 on this dongle uses.
 
 ## Credits
 
-- [DerekSeaman/irk-capture](https://github.com/DerekSeaman/irk-capture) — het onderliggende project, dit is enkel een device-configuratie erbovenop
+- [DerekSeaman/irk-capture](https://github.com/DerekSeaman/irk-capture) — the underlying project; this is only a device configuration on top of it
 - [ESPHome](https://esphome.io)
