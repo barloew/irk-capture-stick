@@ -15,11 +15,17 @@ substitutions:
 esphome:
   name: ${device_name}
   friendly_name: ${friendly_name}
+  # The devkitc-1 board definition defaults to 4 MB, but this dongle has
+  # 16 MB (flash ID 1840ef). Without this the extra 12 MB stays unused.
+  platformio_options:
+    board_upload.flash_size: 16MB
+    board_upload.maximum_size: 16777216
 
 esp32:
   board: ${esp32_board}
+  # ESPHome does not know this board by name, so state the variant
+  # explicitly. PlatformIO itself resolves the board just fine.
   variant: ${esp32_variant}
-  flash_size: 16MB
 
 packages:
   device:
@@ -35,6 +41,173 @@ wifi:
 
 ## ---------- Display + RGB LED: LilyGo T-Dongle-S3 ----------
 # Two separate SPI buses: one for the LCD, one for the APA102 LED.
+spi:
+  - id: spi_lcd
+    clk_pin: GPIO5
+    mosi_pin: GPIO3
+  - id: spi_led
+    clk_pin: GPIO39
+    mosi_pin: GPIO40
+
+# LCD backlight (PWM on GPIO38, inverted)
+output:
+  - platform: ledc
+    pin: GPIO38
+    inverted: true
+    id: backlight_output
+
+light:
+  - platform: monochromatic
+    output: backlight_output
+    name: "LCD Backlight"
+    id: lcd_backlight
+    restore_mode: ALWAYS_ON        # screen turns on automatically at boot
+
+  # The built-in APA102 RGB LED (1 pixel)
+  - platform: spi_led_strip
+    id: rgb_led
+    spi_id: spi_led
+    num_leds: 1
+    name: "RGB LED"
+    restore_mode: ALWAYS_OFF
+    # spi_led_strip has no rgb_order option: it assumes BGR, which is
+    # exactly what the APA102 on this dongle uses.
+
+# Dongle button (GPIO0) -> cycle through the pages
+binary_sensor:
+  - platform: gpio
+    pin:
+      number: GPIO0
+      inverted: true
+    name: "Dongle Button"
+    on_press:
+      then:
+        - display.page.show_next: my_display
+        - component.update: my_display
+
+font:
+  - file: "gfonts://Roboto"
+    id: font_med
+    size: 14
+  - file: "gfonts://Roboto"
+    id: font_small
+    size: 11
+
+# Internal WiFi info for the system page (internal = no entity in HA)
+text_sensor:
+  - platform: wifi_info
+    ip_address:
+      id: wifi_ip
+      internal: true
+    ssid:
+      id: wifi_ssid_ts
+      internal: true
+
+display:
+  - platform: st7735
+    id: my_display
+    spi_id: spi_lcd
+    model: "INITR_MINI160X80"
+    reset_pin: GPIO1
+    cs_pin: GPIO4
+    dc_pin: GPIO2
+    rotation: 270
+    device_width: 82
+    device_height: 161
+    col_start: 0
+    row_start: 0
+    eight_bit_color: true
+    invert_colors: true
+    use_bgr: true
+    update_interval: 1s
+    pages:
+      # --- Page 1: status overview ---
+      - id: page_status
+        lambda: |-
+          it.fill(Color(0, 0, 0));
+          it.print(2, 0, id(font_med), Color(255, 255, 255), "IRK Capture");
+          auto adv = id(ble_advertising).state;
+          it.printf(2, 18, id(font_small),
+                    adv ? Color(0, 255, 0) : Color(255, 0, 0),
+                    "Adv: %s", adv ? "ON" : "off");
+          it.printf(2, 32, id(font_small), Color(255, 255, 255),
+                    "Name: %s", id(ble_name_input).state.c_str());
+          it.printf(2, 46, id(font_small), Color(255, 255, 255),
+                    "MAC: %s", id(effective_mac).state.c_str());
+          std::string irk = id(last_irk).state;
+          if (irk.length() >= 12)
+            it.printf(2, 60, id(font_small), Color(0, 200, 255),
+                      "IRK: %s...", irk.substr(0, 12).c_str());
+          else
+            it.print(2, 60, id(font_small), Color(255, 255, 255), "IRK: (none yet)");
+
+      # --- Page 2: full IRK ---
+      - id: page_irk
+        lambda: |-
+          it.fill(Color(0, 0, 0));
+          it.print(2, 0, id(font_med), Color(255, 255, 255), "Latest IRK");
+          std::string irk = id(last_irk).state;
+          if (irk.length() >= 32) {
+            it.printf(2, 20, id(font_small), Color(0, 200, 255),
+                      "%s", irk.substr(0, 16).c_str());
+            it.printf(2, 34, id(font_small), Color(0, 200, 255),
+                      "%s", irk.substr(16, 16).c_str());
+          } else if (!irk.empty()) {
+            it.printf(2, 20, id(font_small), Color(0, 200, 255),
+                      "%s", irk.c_str());
+          } else {
+            it.print(2, 20, id(font_small), Color(255, 255, 255), "(no IRK yet)");
+          }
+          it.printf(2, 54, id(font_small), Color(255, 255, 255),
+                    "From: %s", id(last_addr).state.c_str());
+
+      # --- Page 3: system / WiFi ---
+      - id: page_sys
+        lambda: |-
+          it.fill(Color(0, 0, 0));
+          it.print(2, 0, id(font_med), Color(255, 255, 255), "System");
+          it.printf(2, 20, id(font_small), Color(255, 255, 255),
+                    "SSID: %s", id(wifi_ssid_ts).state.c_str());
+          it.printf(2, 34, id(font_small), Color(255, 255, 255),
+                    "IP: %s", id(wifi_ip).state.c_str());
+          it.printf(2, 48, id(font_small), Color(255, 255, 255),
+                    "Profile: %s", id(ble_profile_select).current_option().c_str());
+
+# ---------- (Optional) RGB LED as a status indicator ----------
+# Green = IRK captured | Blue = advertising | Red = idle.
+# Prefer to control the LED entirely from Home Assistant? Delete this
+# whole interval block and "RGB LED" stays a plain controllable light.
+interval:
+  - interval: 2s
+    then:
+      - if:
+          condition:
+            lambda: 'return id(last_irk).state.length() >= 12;'
+          then:
+            - light.turn_on:
+                id: rgb_led
+                red: 0%
+                green: 100%
+                blue: 0%
+                brightness: 40%
+          else:
+            - if:
+                condition:
+                  lambda: 'return id(ble_advertising).state;'
+                then:
+                  - light.turn_on:
+                      id: rgb_led
+                      red: 0%
+                      green: 0%
+                      blue: 100%
+                      brightness: 40%
+                else:
+                  - light.turn_on:
+                      id: rgb_led
+                      red: 100%
+                      green: 0%
+                      blue: 0%
+                      brightness: 30%# Two separate SPI buses: one for the LCD, one for the APA102 LED.
 spi:
   - id: spi_lcd
     clk_pin: GPIO5
