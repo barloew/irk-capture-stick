@@ -15,17 +15,15 @@ substitutions:
 esphome:
   name: ${device_name}
   friendly_name: ${friendly_name}
-  # The devkitc-1 board definition defaults to 4 MB, but this dongle has
-  # 16 MB (flash ID 1840ef). Without this the extra 12 MB stays unused.
-  platformio_options:
-    board_upload.flash_size: 16MB
-    board_upload.maximum_size: 16777216
 
 esp32:
   board: ${esp32_board}
   # ESPHome does not know this board by name, so state the variant
   # explicitly. PlatformIO itself resolves the board just fine.
   variant: ${esp32_variant}
+  # The devkitc-1 board definition defaults to 4 MB, but this dongle has
+  # 16 MB (flash ID 1840ef). Without this the extra 12 MB stays unused.
+  flash_size: 16MB
 
 packages:
   device:
