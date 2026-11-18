@@ -1,0 +1,31 @@
+name: Validate
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  esphome:
+    name: ESPHome config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - run: pip install esphome
+      - name: Create placeholder secrets
+        run: |
+          cat > secrets.yaml <<SECRETS
+          wifi_ssid: "ci"
+          wifi_password: "ci-password"
+          api_key: "$(head -c 32 /dev/urandom | base64)"
+          ota_password: "ci-ota"
+          SECRETS
+      - run: esphome config irk-dongle.yaml
